@@ -1,0 +1,47 @@
+version: "3.8"
+
+services:
+
+  redis:
+    image: redis:latest
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 30s
+      retries: 5
+    volumes:
+      - redis_data:/src/redis/data
+    restart: always
+
+  web:
+    build: ./src
+    ports:
+      - 8080:8080
+    command: uvicorn main:app --host 0.0.0.0 --port 8080
+    env_file:
+      - ./src/env/values-dev.env
+    depends_on:
+      - redis
+    volumes:
+      - ./src:/src/web
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+
+  worker:
+    build: ./src
+    env_file:
+      - ./src/env/values-dev.env
+    command: celery -A celery_app.celery_app worker -E --loglevel=info --logfile=logs/celery.log
+    volumes:
+      - ./src:/src/worker
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - web
+      - redis
+
+volumes:
+  redis_data:
+    driver: local
